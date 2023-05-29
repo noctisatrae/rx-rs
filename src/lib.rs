@@ -1,5 +1,5 @@
 // use std::fmt::Debug;
-use std::{marker::PhantomData, sync::{Arc}};
+use std::{marker::PhantomData, sync::Arc};
 
 pub struct Service<F, D, R>
 where
@@ -27,29 +27,19 @@ where
     }
 }
 
-pub struct ServiceResult<D, R> {
+pub struct ServiceResult<R> {
     iteration: u32,
-    previous: Vec<Arc<R>>,
-    initial_value: Option<Arc<D>>,
-    current: Option<Arc<R>>,
+    previous: Vec<R>,
+    current: R,
 }
 
-impl<D, R> ServiceResult<D, R> {
+impl<R> ServiceResult<R> {
     fn push_current(&mut self, value: R) {
-        self.current = Some(Arc::new(value));
+        self.current = value;
     }
 
     fn push_previous(&mut self) {
-        match self.current.as_ref() {
-            Some(val) => self.previous.push(Arc::clone(val)),
-            None => {
-                if self.iteration == 0 {
-                    // Handle the case where the iteration is 0 and there is no value.
-                } else {
-                    panic!("?? iteration is not 0 and there is not value");
-                }
-            }
-        };
+        self.previous.push(self.current);
     }
 }
 
@@ -64,31 +54,28 @@ impl<F, D, R> Infrastructure<F, D, R>
 where
     F: Fn(&D) -> R,
 {
-    pub async fn execute(&self, stream: D) {
+    pub async fn execute(&self, stream: R) {
         let number_to_execute: u32 = self.services.len() as u32;
 
         let mut infrastructure_result = ServiceResult {
             iteration: 0,
             previous: vec![],
-            initial_value: Some(Arc::new(stream)),
-            current: None,
+            current: stream,
         };
 
         loop {
             if infrastructure_result.iteration < number_to_execute {
                 let service = &self.services[infrastructure_result.iteration as usize];
+                let arg = infrastructure_result.current;
 
-                // Determine the appropriate argument for the call function
-                let arg = if infrastructure_result.iteration == 0 {
-                    infrastructure_result.initial_value.as_ref().unwrap()
-                } else {
-                    infrastructure_result.current.as_ref().unwrap()
-                };
+                let result_from_current_service = service.call(&arg).await;
+
+                // push old value to previous
+                infrastructure_result.push_previous();
 
                 // push new value to current
-                infrastructure_result.push_current(
-                    service.call().await
-                );
+                infrastructure_result.push_current(result_from_current_service);
+
                 infrastructure_result.iteration += 1;
             } else {
                 break;
