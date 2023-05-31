@@ -1,6 +1,6 @@
 // I finally fixed it, thanks guys! - noctis
-use std::{marker::PhantomData, sync::Arc};
 use indicatif;
+use std::{marker::PhantomData, sync::Arc};
 
 pub struct Service<R> {
     pub name: &'static str,
