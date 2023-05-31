@@ -66,8 +66,6 @@ impl<R> Infrastructure<R> {
             progress.inc(1);
         }
 
-        progress.finish_with_message("All services executed successfully!");
-
         return &self.result;
     }
 }
