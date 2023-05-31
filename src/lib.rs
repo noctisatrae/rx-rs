@@ -1,20 +1,15 @@
-// use std::fmt::Debug;
+// I finally fixed it, thanks guys! - noctis
 use std::{marker::PhantomData, sync::Arc};
+use indicatif;
 
-pub struct Service<F, D, R>
-where
-    F: Fn(&D) -> R,
-{
+pub struct Service<R> {
     pub name: &'static str,
-    pub function: F,
-    _phantom: PhantomData<fn(&D) -> R>,
+    pub function: Box<dyn Fn(&R) -> R>,
+    _phantom: PhantomData<Box<fn(&R) -> R>>,
 }
 
-impl<F, D, R> Service<F, D, R>
-where
-    F: Fn(&D) -> R,
-{
-    pub fn new(name: &'static str, function: F) -> Self {
+impl<R> Service<R> {
+    pub fn new(name: &'static str, function: Box<dyn Fn(&R) -> R>) -> Self {
         Self {
             name,
             function,
@@ -22,64 +17,57 @@ where
         }
     }
 
-    pub async fn call(&self, arg: &D) -> R {
+    pub async fn call(&self, arg: &R) -> R {
         (self.function)(arg)
     }
 }
 
 pub struct ServiceResult<R> {
-    iteration: u32,
-    previous: Vec<R>,
-    current: R,
+    pub iteration: u32,
+    pub previous: Vec<Arc<R>>,
+    pub current: Arc<R>,
 }
 
 impl<R> ServiceResult<R> {
     fn push_current(&mut self, value: R) {
-        self.current = value;
+        self.current = Arc::new(value);
     }
 
+    // maybe use ARC::new() to share a memory reference to the value so it doesn't need to be cloned.
     fn push_previous(&mut self) {
-        self.previous.push(self.current);
+        self.previous.push(self.current.clone());
     }
 }
 
-pub struct Infrastructure<F, D, R>
-where
-    F: Fn(&D) -> R,
-{
-    pub services: Vec<Service<F, D, R>>,
+pub struct Infrastructure<R> {
+    pub services: Vec<Service<R>>,
+    pub result: ServiceResult<R>,
 }
 
-impl<F, D, R> Infrastructure<F, D, R>
-where
-    F: Fn(&D) -> R,
-{
-    pub async fn execute(&self, stream: R) {
+impl<R> Infrastructure<R> {
+    pub async fn execute(&mut self) -> &ServiceResult<R> {
         let number_to_execute: u32 = self.services.len() as u32;
 
-        let mut infrastructure_result = ServiceResult {
-            iteration: 0,
-            previous: vec![],
-            current: stream,
-        };
+        let progress = indicatif::ProgressBar::new(number_to_execute as u64);
 
-        loop {
-            if infrastructure_result.iteration < number_to_execute {
-                let service = &self.services[infrastructure_result.iteration as usize];
-                let arg = infrastructure_result.current;
+        while self.result.iteration < number_to_execute {
+            let service = &self.services[self.result.iteration as usize];
+            let arg = &self.result.current;
 
-                let result_from_current_service = service.call(&arg).await;
+            let result_from_current_service = service.call(arg).await;
 
-                // push old value to previous
-                infrastructure_result.push_previous();
+            // push old value to previous
+            self.result.push_previous();
 
-                // push new value to current
-                infrastructure_result.push_current(result_from_current_service);
+            // push new value to current
+            self.result.push_current(result_from_current_service);
 
-                infrastructure_result.iteration += 1;
-            } else {
-                break;
-            }
+            self.result.iteration += 1;
+            progress.inc(1);
         }
+
+        progress.finish_with_message("All services executed successfully!");
+
+        return &self.result;
     }
 }
