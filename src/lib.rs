@@ -2,6 +2,15 @@
 use indicatif;
 use std::{marker::PhantomData, sync::Arc};
 
+/// This struct allows to create a service that will be exectued by an infrastructure.
+/// 
+/// ```
+/// use rxrs::Service;
+/// 
+/// let add_78: Service<u32> = Service::new("add 78", Box::new(|a| {
+///     a + 78
+/// }));
+/// ```
 pub struct Service<R> {
     pub name: &'static str,
     pub function: Box<dyn Fn(&R) -> R>,
@@ -9,6 +18,7 @@ pub struct Service<R> {
 }
 
 impl<R> Service<R> {
+    /// Creates a new service.
     pub fn new(name: &'static str, function: Box<dyn Fn(&R) -> R>) -> Self {
         Self {
             name,
@@ -17,11 +27,12 @@ impl<R> Service<R> {
         }
     }
 
-    pub async fn call(&self, arg: &R) -> R {
+    async fn call(&self, arg: &R) -> R {
         (self.function)(arg)
     }
 }
 
+/// This struct contains all the precious value you have computed. Including the values of every iteration of the infrastructure.
 pub struct ServiceResult<R> {
     pub iteration: u32,
     pub previous: Vec<Arc<R>>,
@@ -39,6 +50,25 @@ impl<R> ServiceResult<R> {
     }
 }
 
+/// This struct is the glue that ties everything together. It allows to define in which order your services will be run, and to access the values you'll compute.
+/// 
+/// You can define an infrastructure like that:
+/// ```
+/// use rxrs::{Service, Infrastructure};
+/// 
+/// let add_78 = Service::new("add78", Box::new(|a| a + 78));
+/// 
+/// let my_infrastructure_to_add_78 = Infrastructure {
+///     services: [add_78],
+///     result: ServiceResult {
+///         iteration: 0,
+///         previous: vec![],
+///         current: Arc::new(2)              
+///     }
+/// }
+/// 
+/// my_infrastructure_to_add_78.execute(); // if you .await, should be equal to 80. If it's not.. well, too bad.
+/// ```
 pub struct Infrastructure<R> {
     pub services: Vec<Service<R>>,
     pub result: ServiceResult<R>,
