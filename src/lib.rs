@@ -54,20 +54,21 @@ impl<R> ServiceResult<R> {
 /// 
 /// You can define an infrastructure like that:
 /// ```
-/// use rxrs::{Service, Infrastructure};
+/// use std::sync::Arc;
+/// use rxrs::{Service, Infrastructure, ServiceResult};
 /// 
 /// let add_78 = Service::new("add78", Box::new(|a| a + 78));
 /// 
-/// let my_infrastructure_to_add_78 = Infrastructure {
-///     services: [add_78],
+/// let mut my_infrastructure_to_add_78 = Infrastructure {
+///     services: vec![add_78],
 ///     result: ServiceResult {
 ///         iteration: 0,
 ///         previous: vec![],
 ///         current: Arc::new(2)              
 ///     }
-/// }
+/// };
 /// 
-/// my_infrastructure_to_add_78.execute(); // if you .await, should be equal to 80. If it's not.. well, too bad.
+/// my_infrastructure_to_add_78.execute();
 /// ```
 pub struct Infrastructure<R> {
     pub services: Vec<Service<R>>,
